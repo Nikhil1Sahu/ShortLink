@@ -75,14 +75,19 @@ async def set_thumbnail_handler(client, message):
         if not message.reply_to_message or not message.reply_to_message.photo:
             return await message.reply("❌ Please reply to a photo with /setthumb")
         
+        # Get the highest quality photo
         file_id = message.reply_to_message.photo.file_id
         user_id = message.from_user.id
         
         # Save thumbnail to database
-        success = await tb.set_thumbnail(user_id, file_id)  # 👈 FIXED: Changed db to tb
+        success = await tb.set_thumbnail(user_id, file_id)
         
         if success:
-            await message.reply("✅ Thumbnail saved successfully!\n\nIt will be automatically applied to your PDF files.")
+            # Send confirmation with the thumbnail
+            await message.reply_photo(
+                file_id,
+                caption="✅ Thumbnail saved successfully!\n\nIt will be automatically applied to your PDF files."
+            )
         else:
             await message.reply("❌ Failed to save thumbnail. Please try again.")
             
@@ -95,7 +100,7 @@ async def set_thumbnail_handler(client, message):
 async def del_thumbnail_handler(client, message):
     try:
         user_id = message.from_user.id
-        success = await tb.delete_thumbnail(user_id)  # 👈 FIXED: Changed db to tb
+        success = await tb.delete_thumbnail(user_id)
         
         if success:
             await message.reply("🗑️ Thumbnail deleted!")
@@ -110,9 +115,12 @@ async def del_thumbnail_handler(client, message):
 @bot.on_message(filters.command("showthumb"))
 async def show_thumbnail_handler(client, message):
     try:
-        thumb = await tb.get_thumbnail(message.from_user.id)  # 👈 FIXED: Changed db to tb
-        if thumb:
-            await message.reply_photo(thumb, caption="📸 Your current thumbnail\n\nThis will be applied to your PDF files.")
+        thumb_file_id = await tb.get_thumbnail(message.from_user.id)
+        if thumb_file_id:
+            await message.reply_photo(
+                thumb_file_id, 
+                caption="📸 Your current thumbnail\n\nThis will be applied to your PDF files."
+            )
         else:
             await message.reply("❌ You don't have any thumbnail set.\n\nUse /setthumb by replying to a photo.")
     except Exception as e:
@@ -126,21 +134,30 @@ async def pdf_handler(client, message):
         # only process PDFs
         if message.document and message.document.mime_type == "application/pdf":
             user_id = message.from_user.id
-            thumb = await tb.get_thumbnail(user_id)  # 👈 FIXED: Changed db to tb
+            thumb_file_id = await tb.get_thumbnail(user_id)
             
             # Download the document first
             download_msg = await message.reply("📥 Downloading your PDF...")
             doc_path = await message.download()
             
-            # Edit message to show processing
-            await download_msg.edit_text("🔄 Applying thumbnail...")
+            thumb_path = None
+            if thumb_file_id:
+                # Download the thumbnail file
+                await download_msg.edit_text("🔄 Downloading thumbnail...")
+                thumb_path = await client.download_media(thumb_file_id)
             
-            if thumb:
+            # Edit message to show processing
+            await download_msg.edit_text("🔄 Processing your PDF...")
+            
+            if thumb_path:
                 await message.reply_document(
                     document=doc_path,
-                    thumb=thumb,
+                    thumb=thumb_path,
                     caption="📄 Here's your PDF with custom thumbnail ✅"
                 )
+                # Clean up thumbnail file
+                import os
+                os.remove(thumb_path)
             else:
                 await message.reply_document(
                     document=doc_path,
@@ -155,10 +172,6 @@ async def pdf_handler(client, message):
     except Exception as e:
         print(f"Error in pdf_handler: {e}")
         # Send detailed error to yourself and generic message to user
-        error_msg = f"❌ PDF Error: {str(e)}"
-        if len(error_msg) > 4000:  # Telegram message limit
-            error_msg = error_msg[:4000] + "..."
-        
         try:
             await message.reply("❌ An error occurred while processing your PDF. Please try again.")
             # Send detailed error to admin or log channel
