@@ -32,6 +32,8 @@ class Techifybots:
             if user_id in self.cache:
                 return self.cache[user_id]
             user = await self.users.find_one({"user_id": user_id})
+            if user:
+                self.cache[user_id] = user  # Cache the result
             return user
         except Exception as e:
             print("Error in getUser:", e)
@@ -79,6 +81,10 @@ class Techifybots:
                 {'$set': {'shortner': shortner, 'api': api}},
                 upsert=True
             )
+            # Update cache
+            if user_id in self.cache:
+                self.cache[user_id]['shortner'] = shortner
+                self.cache[user_id]['api'] = api
         except Exception as e:
             print("Error in set_shortner:", e)
 
@@ -92,40 +98,76 @@ class Techifybots:
             return None
 
     # ----------------- NEW THUMBNAIL METHODS -----------------
-    async def set_thumbnail(self, user_id: int, file_id: str):
+    async def set_thumbnail(self, user_id: int, file_id: str) -> bool:
+        """Set thumbnail for a user"""
         try:
-            await self.users.update_one(
+            result = await self.users.update_one(
                 {"user_id": user_id},
                 {"$set": {"thumbnail": file_id}},
                 upsert=True
             )
-            # keep cache in sync
+            # Update cache
             if user_id in self.cache:
                 self.cache[user_id]["thumbnail"] = file_id
+            else:
+                # If not in cache, fetch and cache the user
+                user = await self.get_user(user_id)
+                if user:
+                    user["thumbnail"] = file_id
+                    self.cache[user_id] = user
+            
+            return result.modified_count > 0 or result.upserted_id is not None
         except Exception as e:
             print("Error in set_thumbnail:", e)
+            return False
 
     async def get_thumbnail(self, user_id: int) -> str | None:
+        """Get thumbnail file_id for a user"""
         try:
-            if user_id in self.cache and "thumbnail" in self.cache[user_id]:
-                return self.cache[user_id].get("thumbnail")
+            # Check cache first
+            if user_id in self.cache and self.cache[user_id].get("thumbnail"):
+                return self.cache[user_id]["thumbnail"]
+            
+            # If not in cache, fetch from database
             user = await self.users.find_one({"user_id": user_id})
-            if user:
-                return user.get("thumbnail")
+            if user and "thumbnail" in user:
+                # Update cache
+                if user_id not in self.cache:
+                    self.cache[user_id] = user
+                else:
+                    self.cache[user_id]["thumbnail"] = user["thumbnail"]
+                
+                return user["thumbnail"]
+            
             return None
         except Exception as e:
             print("Error in get_thumbnail:", e)
             return None
 
-    async def delete_thumbnail(self, user_id: int):
+    async def delete_thumbnail(self, user_id: int) -> bool:
+        """Delete thumbnail for a user"""
         try:
-            await self.users.update_one(
+            result = await self.users.update_one(
                 {"user_id": user_id},
                 {"$unset": {"thumbnail": ""}}
             )
+            
+            # Update cache
             if user_id in self.cache and "thumbnail" in self.cache[user_id]:
                 self.cache[user_id]["thumbnail"] = None
+            
+            return result.modified_count > 0
         except Exception as e:
             print("Error in delete_thumbnail:", e)
+            return False
+
+    async def has_thumbnail(self, user_id: int) -> bool:
+        """Check if user has a thumbnail set"""
+        try:
+            thumbnail = await self.get_thumbnail(user_id)
+            return thumbnail is not None
+        except Exception as e:
+            print("Error in has_thumbnail:", e)
+            return False
 
 tb = Techifybots()

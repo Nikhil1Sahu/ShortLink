@@ -71,36 +71,71 @@ bot = Bot()
 # /setthumb → user sends a photo
 @bot.on_message(filters.command("setthumb") & filters.reply)
 async def set_thumbnail_handler(client, message):
-    if not message.reply_to_message.photo:
-        return await message.reply("Reply to a photo with /setthumb")
-    file_id = message.reply_to_message.photo.file_id
-    await db.set_thumbnail(message.from_user.id, file_id)
-    await message.reply("✅ Thumbnail saved successfully!")
+    try:
+        if not message.reply_to_message or not message.reply_to_message.photo:
+            return await message.reply("❌ Please reply to a photo with /setthumb")
+        
+        file_id = message.reply_to_message.photo.file_id
+        user_id = message.from_user.id
+        
+        # Save thumbnail to database (you need to implement this)
+        success = await db.set_thumbnail(user_id, file_id)
+        
+        if success:
+            await message.reply("✅ Thumbnail saved successfully!")
+        else:
+            await message.reply("❌ Failed to save thumbnail. Please try again.")
+            
+    except Exception as e:
+        print(f"Error in set_thumbnail_handler: {e}")
+        await message.reply("❌ An error occurred while setting thumbnail.")
 
 # /delthumb → delete thumb
 @bot.on_message(filters.command("delthumb"))
 async def del_thumbnail_handler(client, message):
-    await db.delete_thumbnail(message.from_user.id)
-    await message.reply("🗑️ Thumbnail deleted!")
+    try:
+        user_id = message.from_user.id
+        success = await db.delete_thumbnail(user_id)
+        
+        if success:
+            await message.reply("🗑️ Thumbnail deleted!")
+        else:
+            await message.reply("❌ No thumbnail found to delete.")
+            
+    except Exception as e:
+        print(f"Error in del_thumbnail_handler: {e}")
+        await message.reply("❌ An error occurred while deleting thumbnail.")
 
 # auto apply thumbnail when PDF is uploaded
 @bot.on_message(filters.document)
 async def pdf_handler(client, message):
-    # only process PDFs
-    if message.document and message.document.mime_type == "application/pdf":
-        user_id = message.from_user.id
-        thumb = await db.get_thumbnail(user_id)
-        if thumb:
-            await message.reply_document(
-                document=message.document.file_id,
-                thumb=thumb,
-                caption="Here’s your PDF with thumbnail ✅"
-            )
-        else:
-            await message.reply_document(
-                document=message.document.file_id,
-                caption="Here’s your PDF ✅"
-            )
-
+    try:
+        # only process PDFs
+        if message.document and message.document.mime_type == "application/pdf":
+            user_id = message.from_user.id
+            thumb = await db.get_thumbnail(user_id)
+            
+            # Download the document first for better reliability
+            doc_path = await message.download()
+            
+            if thumb:
+                await message.reply_document(
+                    document=doc_path,
+                    thumb=thumb,
+                    caption="Here's your PDF with thumbnail ✅"
+                )
+            else:
+                await message.reply_document(
+                    document=doc_path,
+                    caption="Here's your PDF ✅"
+                )
+            
+            # Clean up the downloaded file
+            import os
+            os.remove(doc_path)
+            
+    except Exception as e:
+        print(f"Error in pdf_handler: {e}")
+        await message.reply("❌ An error occurred while processing your PDF.")
 # -------------------- RUN --------------------
 bot.run()
