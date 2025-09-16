@@ -18,7 +18,8 @@ class Techifybots:
                 "user_id": user_id,
                 "name": name,
                 "shortner": None,
-                "api": None
+                "api": None,
+                "thumbnail": None   # 👈 added field for thumbs
             }
             await self.users.insert_one(user)
             self.cache[user_id] = user
@@ -89,5 +90,42 @@ class Techifybots:
         except Exception as e:
             print("Error in get_value:", e)
             return None
+
+    # ----------------- NEW THUMBNAIL METHODS -----------------
+    async def set_thumbnail(self, user_id: int, file_id: str):
+        try:
+            await self.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"thumbnail": file_id}},
+                upsert=True
+            )
+            # keep cache in sync
+            if user_id in self.cache:
+                self.cache[user_id]["thumbnail"] = file_id
+        except Exception as e:
+            print("Error in set_thumbnail:", e)
+
+    async def get_thumbnail(self, user_id: int) -> str | None:
+        try:
+            if user_id in self.cache and "thumbnail" in self.cache[user_id]:
+                return self.cache[user_id].get("thumbnail")
+            user = await self.users.find_one({"user_id": user_id})
+            if user:
+                return user.get("thumbnail")
+            return None
+        except Exception as e:
+            print("Error in get_thumbnail:", e)
+            return None
+
+    async def delete_thumbnail(self, user_id: int):
+        try:
+            await self.users.update_one(
+                {"user_id": user_id},
+                {"$unset": {"thumbnail": ""}}
+            )
+            if user_id in self.cache and "thumbnail" in self.cache[user_id]:
+                self.cache[user_id]["thumbnail"] = None
+        except Exception as e:
+            print("Error in delete_thumbnail:", e)
 
 tb = Techifybots()

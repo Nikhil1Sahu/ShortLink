@@ -15,3 +15,10 @@ DB_NAME = os.environ.get("DB_NAME", "Cluster0")
 
 IS_FSUB = os.environ.get("IS_FSUB", "False").lower() == "true"  # Set "True" For Enable Force Subscribe
 AUTH_CHANNELS = list(map(int, os.environ.get("AUTH_CHANNEL", "-1002807337111").split())) # Add Multiple channel ids
+
+# ------------------ NEW DEFAULT THUMBNAIL ------------------ #
+# Global fallback thumbnail (used if user has not set one)
+DEFAULT_THUMB = os.environ.get(
+    "DEFAULT_THUMB",
+    "https://envs.sh/ZwU.png"  # 👈 put your default thumbnail URL here
+)

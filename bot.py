@@ -1,9 +1,10 @@
 import os
 from datetime import datetime
 from pytz import timezone
-from pyrogram import Client
+from pyrogram import Client, filters
 from aiohttp import web
-from config import API_ID, API_HASH, BOT_TOKEN, ADMIN, LOG_CHANNEL
+from config import API_ID, API_HASH, BOT_TOKEN, ADMIN, LOG_CHANNEL, DEFAULT_THUMB  # 👈 added DEFAULT_THUMB
+from TechifyBots import db  # 👈 import db functions
 
 routes = web.RouteTableDef()
 
@@ -37,10 +38,10 @@ class Bot(Client):
         except Exception as e:
             print(f"Web server error: {e}")
 
-
         await super().start()
         me = await self.get_me()
         print(f"Bot Started as {me.first_name}")
+
         if isinstance(ADMIN, int):
             try:
                 await self.send_message(ADMIN, f"**{me.first_name} is started...**")
@@ -61,6 +62,48 @@ class Bot(Client):
 
     async def stop(self, *args):
         await super().stop()
-        print(f"{me.first_name} Bot stopped.")
+        print("Bot stopped.")
 
-Bot().run()
+bot = Bot()
+
+# -------------------- NEW HANDLERS --------------------
+
+# /setthumb → user sends a photo
+@bot.on_message(filters.command("setthumb") & filters.reply)
+async def set_thumbnail_handler(client, message):
+    if not message.reply_to_message.photo:
+        return await message.reply("Reply to a photo with /setthumb")
+    file_id = message.reply_to_message.photo.file_id
+    await db.set_thumbnail(message.from_user.id, file_id)
+    await message.reply("✅ Thumbnail saved successfully!")
+
+# /delthumb → delete thumb
+@bot.on_message(filters.command("delthumb"))
+async def del_thumbnail_handler(client, message):
+    await db.delete_thumbnail(message.from_user.id)
+    await message.reply("🗑️ Thumbnail deleted!")
+
+# auto apply thumbnail when PDF is uploaded
+@bot.on_message(filters.document.mime_type("application/pdf"))
+async def pdf_handler(client, message):
+    user_id = message.from_user.id
+    thumb = await db.get_thumbnail(user_id)
+
+    # 👇 if user has no custom thumb, fall back to DEFAULT_THUMB
+    if not thumb and DEFAULT_THUMB:
+        thumb = DEFAULT_THUMB
+
+    if thumb:
+        await message.reply_document(
+            document=message.document.file_id,
+            thumb=thumb,
+            caption="Here’s your PDF with thumbnail ✅"
+        )
+    else:
+        await message.reply_document(
+            document=message.document.file_id,
+            caption="Here’s your PDF ✅"
+        )
+
+# -------------------- RUN --------------------
+bot.run()

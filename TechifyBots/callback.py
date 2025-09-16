@@ -1,7 +1,8 @@
-from pyrogram import Client
+from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from Script import text
 from config import ADMIN
+from db import tb   # 👈 import DB instance
 
 @Client.on_callback_query()
 async def callback_query_handler(client, query: CallbackQuery):
@@ -38,3 +39,29 @@ async def callback_query_handler(client, query: CallbackQuery):
 
     elif query.data == "close":
         await query.message.delete()
+
+# ---------------- THUMBNAIL COMMANDS ---------------- #
+
+# /setthumb → user must reply to a photo
+@Client.on_message(filters.command("setthumb") & filters.reply)
+async def set_thumbnail_handler(client, message):
+    if not message.reply_to_message.photo:
+        return await message.reply("⚠️ Reply to a photo with /setthumb to set your thumbnail.")
+    file_id = message.reply_to_message.photo.file_id
+    await tb.set_thumbnail(message.from_user.id, file_id)
+    await message.reply("✅ Thumbnail saved successfully!")
+
+# /delthumb → delete thumbnail
+@Client.on_message(filters.command("delthumb"))
+async def del_thumbnail_handler(client, message):
+    await tb.delete_thumbnail(message.from_user.id)
+    await message.reply("🗑️ Thumbnail deleted!")
+
+# /showthumb → show current thumbnail
+@Client.on_message(filters.command("showthumb"))
+async def show_thumbnail_handler(client, message):
+    thumb = await tb.get_thumbnail(message.from_user.id)
+    if thumb:
+        await message.reply_photo(thumb, caption="📌 Your current thumbnail")
+    else:
+        await message.reply("❌ You don’t have any thumbnail set.")
