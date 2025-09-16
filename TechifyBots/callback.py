@@ -2,7 +2,7 @@ from pyrogram import Client, filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from Script import text
 from config import ADMIN
-from db import tb   # 👈 import DB instance
+from TechifyBots.db import tb   # 👈 import DB instance
 
 @Client.on_callback_query()
 async def callback_query_handler(client, query: CallbackQuery):
