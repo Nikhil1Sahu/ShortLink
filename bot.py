@@ -3,8 +3,8 @@ from datetime import datetime
 from pytz import timezone
 from pyrogram import Client, filters
 from aiohttp import web
-from config import API_ID, API_HASH, BOT_TOKEN, ADMIN, LOG_CHANNEL, DEFAULT_THUMB  # 👈 added DEFAULT_THUMB
-from TechifyBots import db  # 👈 import db functions
+from config import API_ID, API_HASH, BOT_TOKEN, ADMIN, LOG_CHANNEL, DEFAULT_THUMB
+from TechifyBots.db import tb  # 👈 FIXED: Import the class instance, not the module
 
 routes = web.RouteTableDef()
 
@@ -78,11 +78,11 @@ async def set_thumbnail_handler(client, message):
         file_id = message.reply_to_message.photo.file_id
         user_id = message.from_user.id
         
-        # Save thumbnail to database (you need to implement this)
-        success = await db.set_thumbnail(user_id, file_id)
+        # Save thumbnail to database
+        success = await tb.set_thumbnail(user_id, file_id)  # 👈 FIXED: Changed db to tb
         
         if success:
-            await message.reply("✅ Thumbnail saved successfully!")
+            await message.reply("✅ Thumbnail saved successfully!\n\nIt will be automatically applied to your PDF files.")
         else:
             await message.reply("❌ Failed to save thumbnail. Please try again.")
             
@@ -95,7 +95,7 @@ async def set_thumbnail_handler(client, message):
 async def del_thumbnail_handler(client, message):
     try:
         user_id = message.from_user.id
-        success = await db.delete_thumbnail(user_id)
+        success = await tb.delete_thumbnail(user_id)  # 👈 FIXED: Changed db to tb
         
         if success:
             await message.reply("🗑️ Thumbnail deleted!")
@@ -106,6 +106,19 @@ async def del_thumbnail_handler(client, message):
         print(f"Error in del_thumbnail_handler: {e}")
         await message.reply("❌ An error occurred while deleting thumbnail.")
 
+# /showthumb → show current thumbnail
+@bot.on_message(filters.command("showthumb"))
+async def show_thumbnail_handler(client, message):
+    try:
+        thumb = await tb.get_thumbnail(message.from_user.id)  # 👈 FIXED: Changed db to tb
+        if thumb:
+            await message.reply_photo(thumb, caption="📸 Your current thumbnail\n\nThis will be applied to your PDF files.")
+        else:
+            await message.reply("❌ You don't have any thumbnail set.\n\nUse /setthumb by replying to a photo.")
+    except Exception as e:
+        print(f"Error in show_thumbnail_handler: {e}")
+        await message.reply("❌ Could not retrieve thumbnail.")
+
 # auto apply thumbnail when PDF is uploaded
 @bot.on_message(filters.document)
 async def pdf_handler(client, message):
@@ -113,29 +126,46 @@ async def pdf_handler(client, message):
         # only process PDFs
         if message.document and message.document.mime_type == "application/pdf":
             user_id = message.from_user.id
-            thumb = await db.get_thumbnail(user_id)
+            thumb = await tb.get_thumbnail(user_id)  # 👈 FIXED: Changed db to tb
             
-            # Download the document first for better reliability
+            # Download the document first
+            download_msg = await message.reply("📥 Downloading your PDF...")
             doc_path = await message.download()
+            
+            # Edit message to show processing
+            await download_msg.edit_text("🔄 Applying thumbnail...")
             
             if thumb:
                 await message.reply_document(
                     document=doc_path,
                     thumb=thumb,
-                    caption="Here's your PDF with thumbnail ✅"
+                    caption="📄 Here's your PDF with custom thumbnail ✅"
                 )
             else:
                 await message.reply_document(
                     document=doc_path,
-                    caption="Here's your PDF ✅"
+                    caption="📄 Here's your PDF ✅"
                 )
             
-            # Clean up the downloaded file
+            # Clean up downloaded file and status message
             import os
             os.remove(doc_path)
+            await download_msg.delete()
             
     except Exception as e:
         print(f"Error in pdf_handler: {e}")
-        await message.reply("❌ An error occurred while processing your PDF.")
+        # Send detailed error to yourself and generic message to user
+        error_msg = f"❌ PDF Error: {str(e)}"
+        if len(error_msg) > 4000:  # Telegram message limit
+            error_msg = error_msg[:4000] + "..."
+        
+        try:
+            await message.reply("❌ An error occurred while processing your PDF. Please try again.")
+            # Send detailed error to admin or log channel
+            if LOG_CHANNEL:
+                await client.send_message(LOG_CHANNEL, f"PDF Error for user {message.from_user.id}: {e}")
+        except:
+            pass
+
 # -------------------- RUN --------------------
 bot.run()
