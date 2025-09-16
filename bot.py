@@ -84,26 +84,23 @@ async def del_thumbnail_handler(client, message):
     await message.reply("🗑️ Thumbnail deleted!")
 
 # auto apply thumbnail when PDF is uploaded
-@bot.on_message(filters.document.mime_type("application/pdf"))
+@bot.on_message(filters.document)
 async def pdf_handler(client, message):
-    user_id = message.from_user.id
-    thumb = await db.get_thumbnail(user_id)
-
-    # 👇 if user has no custom thumb, fall back to DEFAULT_THUMB
-    if not thumb and DEFAULT_THUMB:
-        thumb = DEFAULT_THUMB
-
-    if thumb:
-        await message.reply_document(
-            document=message.document.file_id,
-            thumb=thumb,
-            caption="Here’s your PDF with thumbnail ✅"
-        )
-    else:
-        await message.reply_document(
-            document=message.document.file_id,
-            caption="Here’s your PDF ✅"
-        )
+    # only process PDFs
+    if message.document and message.document.mime_type == "application/pdf":
+        user_id = message.from_user.id
+        thumb = await db.get_thumbnail(user_id)
+        if thumb:
+            await message.reply_document(
+                document=message.document.file_id,
+                thumb=thumb,
+                caption="Here’s your PDF with thumbnail ✅"
+            )
+        else:
+            await message.reply_document(
+                document=message.document.file_id,
+                caption="Here’s your PDF ✅"
+            )
 
 # -------------------- RUN --------------------
 bot.run()
